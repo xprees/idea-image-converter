@@ -1,0 +1,32 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin require-restart="true">
+    <id>cz.xprees.imagetools</id>
+    <name>Image Tools</name>
+    <vendor url="https://github.com/xprees">xprees</vendor>
+    <!-- <description> and <change-notes> are filled in from README.md / CHANGELOG.md by the Gradle build -->
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <resource-bundle>messages.ImageToolsBundle</resource-bundle>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <notificationGroup id="cz.xprees.imagetools" displayType="BALLOON"
+                           key="notification.group.name"/>
+        <applicationService serviceImplementation="cz.xprees.imagetools.settings.ImageToolsSettings"/>
+        <applicationConfigurable parentId="tools" id="cz.xprees.imagetools.settings"
+                                 instance="cz.xprees.imagetools.settings.ImageToolsConfigurable"
+                                 key="settings.display.name" bundle="messages.ImageToolsBundle"/>
+    </extensions>
+
+    <actions>
+        <group id="cz.xprees.imagetools.ConvertImageGroup" popup="true"
+               class="cz.xprees.imagetools.actions.ConvertImageGroup">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="ProjectViewPopupMenuModifyGroup"/>
+            <add-to-group group-id="EditorTabPopupMenu" anchor="after" relative-to-action="CopyPaths"/>
+        </group>
+        <action id="cz.xprees.imagetools.ResizeImage" class="cz.xprees.imagetools.actions.ResizeImageAction">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="cz.xprees.imagetools.ConvertImageGroup"/>
+            <add-to-group group-id="EditorTabPopupMenu" anchor="after" relative-to-action="cz.xprees.imagetools.ConvertImageGroup"/>
+        </action>
+    </actions>
+</idea-plugin>
