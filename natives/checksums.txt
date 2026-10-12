@@ -1,0 +1,2 @@
+# sha256 of the avifenc/avifdec archives published by .github/workflows/natives.yml (format: `sha256sum` output).
+# Empty until the first natives run: the plugin then builds without AVIF support, which hides AVIF from the menu.

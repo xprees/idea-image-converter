@@ -1,0 +1,165 @@
+# Builds the avifenc / avifdec command-line tools (libavif + libaom, statically linked) for every platform the plugin supports
+# and publishes them as assets of a GitHub release tagged `natives-libavif-v<version>`.
+#
+# The plugin build (`downloadAvifNatives` Gradle task) fetches these archives and checks them against `natives/checksums.txt`,
+# so after a run: copy the lines printed in the job summary (or the `checksums.txt` release asset) into `natives/checksums.txt`.
+#
+# Run manually (workflow_dispatch) or by pushing a tag named natives-libavif-v*. Version comes from `libavifVersion` in gradle.properties.
+
+name: Natives
+on:
+  workflow_dispatch:
+  push:
+    tags: [ 'natives-libavif-v*' ]
+
+env:
+  AOM_VERSION: v3.14.1 # keep in sync with ext/aom.cmd of the libavif release
+
+jobs:
+  version:
+    name: Resolve versions
+    runs-on: ubuntu-latest
+    outputs:
+      libavif: ${{ steps.v.outputs.libavif }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: v
+        run: echo "libavif=$(grep '^libavifVersion' gradle.properties | cut -d= -f2 | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.platform }}
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: win-x64,     runner: windows-latest,    msvc: x64 }
+          - { platform: win-arm64,   runner: windows-11-arm,    msvc: arm64 }
+          - { platform: mac-arm64,   runner: macos-latest,      arch: arm64 }
+          - { platform: mac-x64,     runner: macos-15-intel,    arch: x86_64 }
+          - { platform: linux-x64,   runner: ubuntu-latest,     container: 'quay.io/pypa/manylinux_2_28_x86_64' }
+          - { platform: linux-arm64, runner: ubuntu-24.04-arm,  container: 'quay.io/pypa/manylinux_2_28_aarch64' }
+    defaults:
+      run:
+        shell: bash
+    env:
+      LIBAVIF_VERSION: ${{ needs.version.outputs.libavif }}
+    steps:
+      - name: Install build tools (Linux)
+        if: startsWith(matrix.platform, 'linux')
+        run: |
+          pip install ninja cmake
+          if [ "${{ matrix.platform }}" = "linux-x64" ]; then yum install -y nasm; fi
+          yum install -y git perl-core
+
+      - name: Install build tools (macOS)
+        if: startsWith(matrix.platform, 'mac')
+        run: |
+          brew install ninja cmake
+          if [ "${{ matrix.platform }}" = "mac-x64" ]; then brew install nasm; fi
+
+      - name: Install build tools (Windows)
+        if: startsWith(matrix.platform, 'win')
+        run: |
+          pip install ninja cmake
+          if [ "${{ matrix.platform }}" = "win-x64" ]; then choco install nasm -y --no-progress && echo "C:\Program Files\NASM" >> "$GITHUB_PATH"; fi
+
+      - name: MSVC environment
+        if: startsWith(matrix.platform, 'win')
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc }}
+
+      - name: Fetch libavif
+        run: git clone --depth 1 --branch "v${LIBAVIF_VERSION}" https://github.com/AOMediaCodec/libavif.git libavif
+
+      - name: Platform flags
+        run: |
+          case "${{ matrix.platform }}" in
+            win-*)   echo "EXTRA_CMAKE=-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DCMAKE_POLICY_DEFAULT_CMP0091=NEW" >> "$GITHUB_ENV" ;;
+            mac-*)   echo "EXTRA_CMAKE=-DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0" >> "$GITHUB_ENV" ;;
+            linux-*) echo "EXTRA_CMAKE=-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc" >> "$GITHUB_ENV" ;;
+          esac
+
+      - name: Build libaom
+        working-directory: libavif/ext
+        run: |
+          git clone -b "$AOM_VERSION" --depth 1 https://aomedia.googlesource.com/aom
+          cmake -G Ninja -S aom -B aom/build.libavif $EXTRA_CMAKE \
+            -DBUILD_SHARED_LIBS=OFF -DCONFIG_PIC=1 -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_DOCS=0 -DENABLE_EXAMPLES=0 -DENABLE_TESTDATA=0 -DENABLE_TESTS=0 -DENABLE_TOOLS=0
+          cmake --build aom/build.libavif --parallel
+
+      - name: Fetch zlib and libpng
+        working-directory: libavif/ext
+        run: bash zlibpng.cmd
+
+      - name: Build avifenc / avifdec
+        working-directory: libavif
+        run: |
+          cmake -G Ninja -S . -B build $EXTRA_CMAKE \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DAVIF_BUILD_APPS=ON \
+            -DAVIF_CODEC_AOM=LOCAL -DAVIF_CODEC_DAV1D=OFF -DAVIF_LIBYUV=OFF -DAVIF_LIBSHARPYUV=OFF -DAVIF_JPEG=OFF -DAVIF_ZLIBPNG=LOCAL
+          cmake --build build --parallel --target avifenc avifdec
+
+      - name: Smoke test
+        working-directory: libavif/build
+        run: |
+          # 1x1 PNG
+          echo 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' | base64 -d > smoke.png
+          ./avifenc --version
+          ./avifenc --lossless smoke.png smoke.avif
+          ./avifdec smoke.avif smoke-out.png
+          test -s smoke-out.png
+
+      - name: Package
+        run: |
+          mkdir -p pkg
+          cp libavif/build/avifenc* libavif/build/avifdec* pkg/ 2>/dev/null || true
+          rm -f pkg/*.pdb pkg/*.ilk pkg/*.lib pkg/*.exp
+          cp libavif/LICENSE pkg/LICENSE-libavif
+          cp libavif/ext/aom/LICENSE pkg/LICENSE-libaom
+          cp libavif/ext/aom/PATENTS pkg/PATENTS-libaom
+          cp libavif/ext/zlib/LICENSE pkg/LICENSE-zlib
+          cp libavif/ext/libpng/LICENSE pkg/LICENSE-libpng
+          chmod +x pkg/avifenc* pkg/avifdec*
+          (cd pkg && python3 -m zipfile -c "../avif-${{ matrix.platform }}.zip" .)
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: avif-${{ matrix.platform }}
+          path: avif-${{ matrix.platform }}.zip
+          if-no-files-found: error
+
+  publish:
+    name: Publish release assets
+    needs: [ version, build ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum avif-*.zip | tee checksums.txt
+          {
+            echo '### natives/checksums.txt'
+            echo '```'
+            cat checksums.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: natives-libavif-v${{ needs.version.outputs.libavif }}
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "libavif ${{ needs.version.outputs.libavif }} command-line tools" \
+                 --notes "avifenc / avifdec for the Image Tools plugin (libavif ${{ needs.version.outputs.libavif }}, libaom $AOM_VERSION)." --prerelease
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber dist/avif-*.zip dist/checksums.txt
