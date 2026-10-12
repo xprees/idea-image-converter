@@ -1,0 +1,12 @@
+<!-- Loaded only in Rider. The actions themselves are declared in plugin.xml; this adds them to the Solution Explorer
+     context menu (Solution, File System and Unity views), which Rider does not build from ProjectViewPopupMenu. -->
+<idea-plugin>
+    <actions>
+        <reference ref="cz.xprees.imagetools.ConvertImageGroup">
+            <add-to-group group-id="SolutionExplorerPopupMenu" anchor="after" relative-to-action="SolutionExplorerPopupMenu.Edit"/>
+        </reference>
+        <reference ref="cz.xprees.imagetools.ResizeImage">
+            <add-to-group group-id="SolutionExplorerPopupMenu" anchor="after" relative-to-action="cz.xprees.imagetools.ConvertImageGroup"/>
+        </reference>
+    </actions>
+</idea-plugin>
