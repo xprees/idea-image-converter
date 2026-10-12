@@ -6,6 +6,8 @@
     <!-- <description> and <change-notes> are filled in from README.md / CHANGELOG.md by the Gradle build -->
 
     <depends>com.intellij.modules.platform</depends>
+    <!-- Rider's Solution Explorer has its own popup group instead of ProjectViewPopupMenu -->
+    <depends optional="true" config-file="imagetools-rider.xml">com.intellij.modules.rider</depends>
 
     <resource-bundle>messages.ImageToolsBundle</resource-bundle>
 
