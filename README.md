@@ -67,7 +67,9 @@ The plugin version is `major.minor.patch`, derived from git tags:
 - **Any other build:** `major.minor` come from `pluginVersionMajor` / `pluginVersionMinor` in `gradle.properties` (the `PLUGIN_VERSION_MAJOR` / `PLUGIN_VERSION_MINOR` environment variables override them; fallback `0.1`), and the patch is the next free one: the highest existing `major.minor.N` tag plus one, or `0` if there is none.
 - `-PpluginVersion=x.y.z` overrides everything.
 
-To release: bump major/minor in `gradle.properties` only when you want a new line (e.g. `0.2`), merge to `master`, then publish the draft GitHub release that the *Build* workflow creates. Its tag (named after the next free version; you may rename it, e.g. to `0.2.0-beta.1`) becomes the plugin version, and the *Release* workflow signs and publishes exactly that version. Signing and publishing are refused for builds that aren't from a tag.
+**On every merge to `master`**, once build, tests and plugin verification are green, the *Build* workflow tags the merge commit with the next version and creates a draft GitHub release for that tag. Major and minor come from the repository variables `PLUGIN_VERSION_MAJOR` and `PLUGIN_VERSION_MINOR` (*Settings → Secrets and variables → Actions → Variables*); if they are not defined, the values in `gradle.properties` are used. The patch increases automatically.
+
+To start a new line (say `0.2`), change the two variables; the next merge is tagged `0.2.0`. To ship a build, publish its draft release: the *Release* workflow then builds that exact tag, signs it and publishes it to the Marketplace. Signing and publishing are refused for builds that aren't from a tag. For a beta, edit the draft's tag before publishing (e.g. `0.2.0-beta.1`).
 
 ## License
 

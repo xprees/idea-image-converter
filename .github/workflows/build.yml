@@ -2,9 +2,14 @@
 # - Build the plugin ZIP with the 'buildPlugin' task and upload it as a workflow artifact.
 # - Run the 'check' task and upload test reports on failure.
 # - Run the 'verifyPlugin' task and upload Plugin Verifier reports.
-# - Create a draft GitHub release on non-pull-request runs.
+# - On pushes to 'master' (merged pull requests), once everything is green: tag the commit with the next version and
+#   create a draft GitHub release for that tag. Publishing the draft starts the Release workflow.
 #
-# The workflow is triggered on pushes to the 'main' branch and on pull_request events.
+# Version = <major>.<minor>.<patch>: major and minor come from the repository variables PLUGIN_VERSION_MAJOR and
+# PLUGIN_VERSION_MINOR (Settings > Secrets and variables > Actions > Variables; unset = the values in gradle.properties),
+# the patch is the next free one for that major.minor (see build.gradle.kts).
+#
+# The workflow is triggered on pushes to the 'master' branch and on pull_request events.
 #
 # GitHub Actions reference: https://docs.github.com/actions
 #
@@ -12,15 +17,21 @@
 
 name: Build
 on:
-  # Trigger the workflow on pushes to only the 'main' branch (this avoids duplicate checks being run e.g., for dependabot pull requests)
+  # Trigger the workflow on pushes to only the 'master' branch (this avoids duplicate checks being run e.g., for dependabot pull requests)
   push:
-    branches: [ main ]
+    branches: [ master ]
   # Trigger the workflow on any pull request
   pull_request:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # superseded pull request runs are cancelled; runs for master finish so every merge gets its tag
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Major and minor of the plugin version; empty when the variables are not defined (Gradle then falls back to gradle.properties)
+  PLUGIN_VERSION_MAJOR: ${{ vars.PLUGIN_VERSION_MAJOR }}
+  PLUGIN_VERSION_MINOR: ${{ vars.PLUGIN_VERSION_MINOR }}
 
 jobs:
 
@@ -158,12 +169,53 @@ jobs:
           name: pluginVerifier-result
           path: ${{ github.workspace }}/build/reports/pluginVerifier
 
+  # Tag the merge commit with the next version, only after build, tests and verification passed
+  tag:
+    name: Tag release
+    if: github.event_name != 'pull_request'
+    needs: [ build, test, verify ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+
+      # Full history and tags are needed to find the next free patch number
+      - name: Fetch Sources
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+
+      # The version logic lives in build.gradle.kts, so the tag, the draft release and the built plugin always agree
+      - name: Create the tag
+        run: |
+          VERSION=$(./gradlew properties --property version --quiet --console=plain | tail -n 1 | cut -f2- -d ' ')
+          if git rev-parse -q --verify "refs/tags/$VERSION" > /dev/null; then
+            echo "Tag $VERSION already exists, nothing to do"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
+          echo "Tagged ${{ github.sha }} as $VERSION" >> "$GITHUB_STEP_SUMMARY"
+
   # Prepare a draft release for GitHub Releases page for the manual verification
   # If accepted and published, the release workflow would be triggered
   releaseDraft:
     name: Release draft
     if: github.event_name != 'pull_request'
-    needs: [ build, test, verify ]
+    needs: [ build, test, verify, tag ]
     runs-on: ubuntu-latest
     permissions:
       contents: write
