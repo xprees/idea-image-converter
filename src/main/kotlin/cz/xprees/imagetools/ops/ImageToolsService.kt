@@ -41,7 +41,10 @@ private enum class AnimatedChoice { FIRST_FRAME, SKIP }
 @Service(Service.Level.PROJECT)
 class ImageToolsService(private val project: Project, private val scope: CoroutineScope) {
 
-    fun convert(images: List<ImageFile>, target: ImageFormat, options: EncodeOptions) {
+    /**
+     * @param vectorSize how large SVG sources are rendered; raster sources always keep their pixel size.
+     */
+    fun convert(images: List<ImageFile>, target: ImageFormat, options: EncodeOptions, vectorSize: ResizeSpec = ResizeSpec.Percent(100)) {
         val effective = ImageToolsSettings.getInstance().withUserSettings(options)
         val jobs = images.mapNotNull { image ->
             val source = image.file.toNioPath()
@@ -49,10 +52,50 @@ class ImageToolsService(private val project: Project, private val scope: Corouti
             if (image.format == target) null else Job(source, image.format, OutputNaming.converted(source, target), target)
         }
         val alreadyThere = images.size - jobs.size
+        // renders at anything but 100 % get a name that says so (logo@2x.png), resolved per file once the SVG's size is known
+        val sizedNames: ((Job) -> Path)? = if (vectorSize == ResizeSpec.Percent(100)) null else { job ->
+            if (job.sourceFormat.isVector) {
+                val (w, h) = vectorSize.resolve(ImageOperations.dimensions(job.source, job.sourceFormat))
+                OutputNaming.rendered(job.source, job.targetFormat, vectorSize, w, h)
+            } else {
+                job.target
+            }
+        }
         scope.launch {
-            runBatch(message("progress.convert", target.label), jobs, effective, initiallySkipped = alreadyThere) { job, opts ->
-                ImageOperations.convert(job.source, job.sourceFormat, job.target, job.targetFormat, opts)
+            runBatch(message("progress.convert", target.label), jobs, effective, initiallySkipped = alreadyThere, resolveTarget = sizedNames) { job, opts ->
+                ImageOperations.convert(job.source, job.sourceFormat, job.target, job.targetFormat, opts, vectorSize)
             }.report({ count -> message("result.converted", count, target.label) }, message("result.title.done"))
+        }
+    }
+
+    /** Reads the pixel size (SVG: its intrinsic size) in the background; reports a failure and returns null. */
+    private suspend fun readSize(image: ImageFile): Pair<Int, Int>? = try {
+        withBackgroundProgress(project, message("resize.loading"), cancellable = true) {
+            runInterruptible(Dispatchers.IO) { ImageOperations.dimensions(image.file.toNioPath(), image.format) }
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        LOG.warn("Cannot read size of ${image.file.path}", e)
+        notify(message("result.title.failed"), message("resize.loading.failed", StringUtil.escapeXmlEntities(image.file.name), StringUtil.escapeXmlEntities(e.message.orEmpty())), NotificationType.ERROR)
+        null
+    }
+
+    /** SVG conversion with a size picked in a dialog: scale or target resolution (single SVG), scale only for several. */
+    fun convertWithSizeDialog(images: List<ImageFile>, target: ImageFormat) {
+        scope.launch {
+            val size = if (images.size == 1) readSize(images.first()) ?: return@launch else null
+            val mixed = images.any { !it.format.isVector }
+            val settings = ImageToolsSettings.getInstance()
+            val dialog = withContext(Dispatchers.EDT) {
+                ResizeDialog(
+                    project, size, images.size, vector = true, target = target,
+                    initialQuality = settings.state.resizeQuality,
+                    note = if (mixed) message("svg.note.mixed") else null,
+                ).takeIf { it.showAndGet() }?.let { Triple(it.spec(), it.quality, it.lossless) }
+            } ?: return@launch
+            val (spec, quality, lossless) = dialog
+            convert(images, target, EncodeOptions(quality = quality, lossless = lossless), spec)
         }
     }
 
@@ -60,23 +103,9 @@ class ImageToolsService(private val project: Project, private val scope: Corouti
     fun resize(images: List<ImageFile>) {
         scope.launch {
             val first = images.first()
-            val size = if (images.size == 1) {
-                try {
-                    withBackgroundProgress(project, message("resize.loading"), cancellable = true) {
-                        runInterruptible(Dispatchers.IO) { ImageOperations.dimensions(first.file.toNioPath(), first.format) }
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    LOG.warn("Cannot read size of ${first.file.path}", e)
-                    notify(message("result.title.failed"), message("resize.loading.failed", first.file.name, e.message.orEmpty()), NotificationType.ERROR)
-                    return@launch
-                }
-            } else {
-                null
-            }
+            val size = if (images.size == 1) readSize(first) ?: return@launch else null
             val spec = withContext(Dispatchers.EDT) {
-                ResizeDialog(project, size, images.size).takeIf { it.showAndGet() }?.spec()
+                ResizeDialog(project, size, images.size, vector = first.format.isVector).takeIf { it.showAndGet() }?.spec()
             } ?: return@launch
 
             val settings = ImageToolsSettings.getInstance()

@@ -12,7 +12,11 @@ enum class ImageFormat(
     WEBP(".webp", setOf("webp"), writable = true, lossy = true, supportsAlpha = true),
     AVIF(".avif", setOf("avif"), writable = true, lossy = true, supportsAlpha = true),
     BMP(".bmp", setOf("bmp"), writable = false, lossy = false, supportsAlpha = false),
-    GIF(".gif", setOf("gif"), writable = false, lossy = false, supportsAlpha = true);
+    GIF(".gif", setOf("gif"), writable = false, lossy = false, supportsAlpha = true),
+    SVG(".svg", setOf("svg"), writable = false, lossy = false, supportsAlpha = true);
+
+    /** Resolution independent: has no pixel size of its own, so conversions can pick one. */
+    val isVector: Boolean get() = this == SVG
 
     /** Extension used for files we write. */
     val outputExtension: String get() = extensions.first()

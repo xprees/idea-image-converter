@@ -90,6 +90,7 @@ val pluginSinceBuild = providers.gradleProperty("pluginSinceBuild")
 dependencies {
     implementation("com.github.usefulness:webp-imageio:0.11.0")
     implementation("com.twelvemonkeys.imageio:imageio-jpeg:3.15.3")
+    implementation("com.github.weisj:jsvg:2.2.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.assertj:assertj-core:3.27.7")
