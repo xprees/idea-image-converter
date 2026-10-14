@@ -34,10 +34,14 @@ fun git(vararg args: String): List<String>? = runCatching {
     if (output.result.get().exitValue == 0) output.standardOutput.asText.get().lines().map(String::trim).filter(String::isNotEmpty) else null
 }.getOrNull()
 
+/** GitHub Actions passes an undefined `vars.X` as an empty string, so blank counts as not set. */
 fun versionVariable(property: String, env: String, fallback: String) =
-    providers.environmentVariable(env).orElse(providers.gradleProperty(property)).orElse(fallback).get().trim()
+    providers.environmentVariable(env).map(String::trim).filter(String::isNotEmpty)
+        .orElse(providers.gradleProperty(property).map(String::trim).filter(String::isNotEmpty))
+        .orElse(fallback).get()
 
-val explicitVersion = providers.gradleProperty("pluginVersion").orElse(providers.environmentVariable("PLUGIN_VERSION")).orNull
+val explicitVersion = providers.gradleProperty("pluginVersion").orElse(providers.environmentVariable("PLUGIN_VERSION"))
+    .map(String::trim).filter(String::isNotEmpty).orNull
 val tagOnHead = git("tag", "--points-at", "HEAD").orEmpty().mapNotNull(::parseVersionTag)
     .maxWithOrNull(compareBy<VersionTag>({ it.major }, { it.minor }, { it.patch }))
 
