@@ -40,6 +40,9 @@ jobs:
       # Check out the current repository
       - name: Fetch Sources
         uses: actions/checkout@v7
+        with:
+          # full history and tags: the plugin version is derived from git tags
+          fetch-depth: 0
 
       # Set up the Java environment for the next steps
       - name: Setup Java
@@ -80,6 +83,9 @@ jobs:
       # Check out the current repository
       - name: Fetch Sources
         uses: actions/checkout@v7
+        with:
+          # full history and tags: the plugin version is derived from git tags
+          fetch-depth: 0
 
       # Set up the Java environment for the next steps
       - name: Setup Java
@@ -123,6 +129,9 @@ jobs:
       # Check out the current repository
       - name: Fetch Sources
         uses: actions/checkout@v7
+        with:
+          # full history and tags: the plugin version is derived from git tags
+          fetch-depth: 0
 
       # Set up the Java environment for the next steps
       - name: Setup Java
@@ -163,6 +172,9 @@ jobs:
       # Check out the current repository
       - name: Fetch Sources
         uses: actions/checkout@v7
+        with:
+          # full history and tags: the plugin version is derived from git tags
+          fetch-depth: 0
 
       # Set up the Java environment for the next steps
       - name: Setup Java
