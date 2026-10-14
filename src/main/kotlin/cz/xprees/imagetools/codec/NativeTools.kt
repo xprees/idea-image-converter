@@ -1,7 +1,6 @@
 package cz.xprees.imagetools.codec
 
-import com.intellij.ide.plugins.PluginManagerCore
-import com.intellij.openapi.extensions.PluginId
+import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.system.CpuArch
 import java.nio.file.Files
@@ -11,7 +10,6 @@ import java.util.concurrent.TimeUnit
 
 /** Locates the platform-specific CLI binaries shipped inside the plugin (`<plugin>/bin/<os>-<arch>/`). */
 object NativeTools {
-    const val PLUGIN_ID = "cz.xprees.imagetools"
 
     /** Overrides the lookup, for tests and for running against locally built binaries. */
     const val DIR_PROPERTY = "imagetools.natives.dir"
@@ -27,10 +25,14 @@ object NativeTools {
             return "$os-$arch"
         }
 
+    /** `<plugin>/lib/<this jar>` -> `<plugin>`. Derived from our own jar, which avoids the internal plugin-descriptor API. */
+    private fun pluginDirectory(): Path? =
+        PathManager.getJarPathForClass(NativeTools::class.java)?.let { Path.of(it).parent?.parent }
+
     fun binary(name: String): Path? {
         val exe = if (SystemInfo.isWindows) "$name.exe" else name
         val dir = System.getProperty(DIR_PROPERTY)?.let(Path::of)
-            ?: runCatching { PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))?.pluginPath?.resolve("bin") }.getOrNull()
+            ?: pluginDirectory()?.resolve("bin")
             ?: return null
         val file = dir.resolve(platformKey).resolve(exe)
         if (!Files.isRegularFile(file)) return null

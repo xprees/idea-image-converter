@@ -85,7 +85,14 @@ val downloadAvifNatives = tasks.register<DownloadAvifNatives>("downloadAvifNativ
 }
 
 val platformVersion = providers.gradleProperty("platformVersion")
-val pluginSinceBuild = providers.gradleProperty("pluginSinceBuild")
+
+// "2026.2.3" -> "262": two-digit year followed by the release number, which is how IDE build numbers start
+val ideBuildLine = platformVersion.map { version ->
+    val (year, release) = version.split('.').map(String::toInt)
+    "${year - 2000}$release"
+}
+val pluginSinceBuild = providers.gradleProperty("pluginSinceBuild").orElse(ideBuildLine)
+val pluginUntilBuild = providers.gradleProperty("pluginUntilBuild").orElse(ideBuildLine.map { "$it.*" })
 
 dependencies {
     implementation("com.github.usefulness:webp-imageio:0.11.0")
@@ -100,8 +107,17 @@ dependencies {
     }
 }
 
+java {
+    // no Java sources: this only keeps Gradle's Java/Kotlin target validation consistent with the Kotlin target below
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
 kotlin {
     jvmToolchain(21)
+    compilerOptions {
+        // IDE 2026.2 runs on Java 25 and its jars are built for it; Kotlin can't inline their helpers into older bytecode
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25
+    }
 }
 
 intellijPlatform {
@@ -137,7 +153,7 @@ intellijPlatform {
 
         ideaVersion {
             sinceBuild = pluginSinceBuild
-            untilBuild = provider { null }
+            untilBuild = pluginUntilBuild
         }
     }
 
