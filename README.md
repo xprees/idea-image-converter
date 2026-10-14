@@ -9,7 +9,7 @@ EXIF orientation and colour profiles are preserved, transparent images are flatt
 colour when converted to JPG, and originals are never touched: results are written next to the source.
 <!-- Plugin description end -->
 
-Works in every JetBrains IDE based on the IntelliJ Platform 2026.1 or newer (IntelliJ IDEA, WebStorm, Rider, PyCharm, …).
+Works in JetBrains IDEs based on the IntelliJ Platform **2026.2** (IntelliJ IDEA, WebStorm, Rider, PyCharm, …). The supported range is derived from `platformVersion` in `gradle.properties`: it is built, tested and verified against that IDE version, and the plugin declares build `262` to `262.*` as compatible. Supporting a newer IDE generation means bumping that one line and re-running the verification.
 
 ## Usage
 

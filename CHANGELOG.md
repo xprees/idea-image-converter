@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Compatibility range is now derived from the supported IDE version (`platformVersion`): the plugin targets IDE builds 262 to 262.* (2026.2); 2026.1 is no longer supported
+
 ### Added
 
 - Convert SVG to PNG, JPG, WebP or AVIF at its original size, ×2, ×3 or a custom scale / resolution; the custom size dialog keeps the aspect ratio by default and warns when it no longer matches
