@@ -59,6 +59,16 @@ All formats sit behind the `ImageCodec` interface (`codec/`), so a codec can be 
 
 Requires JDK 21.
 
+### Versions and releases
+
+The plugin version is `major.minor.patch`, derived from git tags:
+
+- **Tagged commit:** the tag is the version (`0.1.3`, `v0.1.3`, or `0.2.0-beta.1`, whose suffix selects the Marketplace channel: no suffix = stable, `-beta.N` = beta).
+- **Any other build:** `major.minor` come from `pluginVersionMajor` / `pluginVersionMinor` in `gradle.properties` (the `PLUGIN_VERSION_MAJOR` / `PLUGIN_VERSION_MINOR` environment variables override them; fallback `0.1`), and the patch is the next free one: the highest existing `major.minor.N` tag plus one, or `0` if there is none.
+- `-PpluginVersion=x.y.z` overrides everything.
+
+To release: bump major/minor in `gradle.properties` only when you want a new line (e.g. `0.2`), merge to `master`, then publish the draft GitHub release that the *Build* workflow creates. Its tag (named after the next free version; you may rename it, e.g. to `0.2.0-beta.1`) becomes the plugin version, and the *Release* workflow signs and publishes exactly that version. Signing and publishing are refused for builds that aren't from a tag.
+
 ## License
 
 Apache-2.0, see [LICENSE](LICENSE). Bundled components are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

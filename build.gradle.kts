@@ -11,6 +11,58 @@ plugins {
     id("org.jetbrains.changelog")
 }
 
+// ---- Plugin version ---------------------------------------------------------------------------------------------
+// 1. -PpluginVersion / PLUGIN_VERSION: used as given.
+// 2. A version tag on HEAD (0.2.1, v0.2.1, 0.3.0-beta.1): that version. This is what the release workflow builds, so the
+//    tag name, the plugin version and the Marketplace channel (taken from the suffix) always agree.
+// 3. Otherwise <major>.<minor>.<next patch>: major/minor from PLUGIN_VERSION_MAJOR/MINOR, else pluginVersionMajor/Minor
+//    (gradle.properties or -P), else 0.1, next patch = highest released <major>.<minor>.N tag + 1, or 0 without tags.
+class VersionTag(val major: Int, val minor: Int, val patch: Int, val suffix: String) {
+    val version get() = "$major.$minor.$patch$suffix"
+}
+
+fun parseVersionTag(tag: String): VersionTag? =
+    Regex("""v?(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.]+)?""").matchEntire(tag)?.destructured
+        ?.let { (major, minor, patch, suffix) -> VersionTag(major.toInt(), minor.toInt(), patch.toInt(), suffix) }
+
+/** Output lines of a git command, or null when git or the repository isn't available. */
+fun git(vararg args: String): List<String>? = runCatching {
+    val output = providers.exec {
+        commandLine("git", *args)
+        isIgnoreExitValue = true
+    }
+    if (output.result.get().exitValue == 0) output.standardOutput.asText.get().lines().map(String::trim).filter(String::isNotEmpty) else null
+}.getOrNull()
+
+fun versionVariable(property: String, env: String, fallback: String) =
+    providers.environmentVariable(env).orElse(providers.gradleProperty(property)).orElse(fallback).get().trim()
+
+val explicitVersion = providers.gradleProperty("pluginVersion").orElse(providers.environmentVariable("PLUGIN_VERSION")).orNull
+val tagOnHead = git("tag", "--points-at", "HEAD").orEmpty().mapNotNull(::parseVersionTag)
+    .maxWithOrNull(compareBy<VersionTag>({ it.major }, { it.minor }, { it.patch }))
+
+/** Where [pluginVersion] came from: "explicit", "tag" or "derived" (only the first two may be published). */
+val pluginVersionSource = when {
+    explicitVersion != null -> "explicit"
+    tagOnHead != null -> "tag"
+    else -> "derived"
+}
+
+val pluginVersion: String = when (pluginVersionSource) {
+    "explicit" -> explicitVersion!!.removePrefix("v")
+    "tag" -> tagOnHead!!.version
+    else -> {
+        val major = versionVariable("pluginVersionMajor", "PLUGIN_VERSION_MAJOR", "0").toInt()
+        val minor = versionVariable("pluginVersionMinor", "PLUGIN_VERSION_MINOR", "1").toInt()
+        val releasedPatches = git("tag", "--list").orEmpty().mapNotNull(::parseVersionTag)
+            .filter { it.major == major && it.minor == minor && it.suffix.isEmpty() }
+            .map { it.patch }
+        "$major.$minor.${(releasedPatches.maxOrNull() ?: -1) + 1}"
+    }
+}
+
+version = pluginVersion
+
 /**
  * Fetches the avifenc/avifdec archives built by .github/workflows/natives.yml, verifies them against the SHA-256 sums
  * committed in natives/checksums.txt and unpacks them to `<outputDir>/<platform>/`. With no sums listed it does nothing
@@ -126,7 +178,7 @@ intellijPlatform {
 
     pluginConfiguration {
         name = "Image Tools"
-        version = providers.gradleProperty("version")
+        version = pluginVersion
 
         description = providers.fileContents(layout.projectDirectory.file("README.md")).asText.map {
             val start = "<!-- Plugin description -->"
@@ -166,9 +218,7 @@ intellijPlatform {
     publishing {
         token = providers.environmentVariable("PUBLISH_TOKEN")
         // 0.1.0 -> default channel, 0.1.0-beta.1 -> "beta"
-        channels = providers.gradleProperty("version").map {
-            listOf(it.substringAfter('-', "").substringBefore('.').ifEmpty { "default" })
-        }
+        channels = listOf(pluginVersion.substringAfter('-', "").substringBefore('.').ifEmpty { "default" })
     }
 
     pluginVerification {
@@ -186,7 +236,22 @@ changelog {
     repositoryUrl = providers.gradleProperty("pluginRepositoryUrl")
 }
 
+// Publishing is only allowed for tagged (or explicitly versioned) builds, so a Marketplace upload can never carry a guessed version.
+val checkPublishable = tasks.register("checkPublishable") {
+    val source = pluginVersionSource
+    val version = pluginVersion
+    doLast {
+        check(source != "derived") {
+            "Refusing to publish $version: HEAD has no version tag. Publish a GitHub release (its tag becomes the version) " +
+                "or pass -PpluginVersion. If the tag exists, make sure it was fetched (checkout with fetch-depth: 0)."
+        }
+    }
+}
+
 tasks {
+    named("signPlugin") { dependsOn(checkPublishable) }
+    named("publishPlugin") { dependsOn(checkPublishable) }
+
     wrapper {
         gradleVersion = "9.8.0"
     }
