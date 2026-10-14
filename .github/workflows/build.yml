@@ -3,7 +3,8 @@
 # - Run the 'check' task and upload test reports on failure.
 # - Run the 'verifyPlugin' task and upload Plugin Verifier reports.
 # - On pushes to 'master' (merged pull requests), once everything is green: tag the commit with the next version and
-#   create a draft GitHub release for that tag. Publishing the draft starts the Release workflow.
+#   create a draft GitHub release for that tag with the built (and, if the signing secrets exist, signed) plugin attached.
+#   Publishing the draft starts the Release workflow.
 #
 # Version = <major>.<minor>.<patch>: major and minor come from the repository variables PLUGIN_VERSION_MAJOR and
 # PLUGIN_VERSION_MINOR (Settings > Secrets and variables > Actions > Variables; unset = the values in gradle.properties),
@@ -263,3 +264,28 @@ jobs:
             --draft \
             --title $VERSION \
             --notes-file $RELEASE_NOTE
+
+      # Build the plugin from the tagged commit (its version is exactly the tag), so the draft carries the installable zip
+      - name: Build plugin
+        run: ./gradlew buildPlugin
+
+      # Also sign it when the signing secrets are configured; these are the same files the Release workflow publishes
+      - name: Sign plugin
+        env:
+          CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$PRIVATE_KEY" ] || [ -z "$CERTIFICATE_CHAIN" ]; then
+            echo "Signing secrets are not configured: attaching the unsigned plugin only"
+            exit 0
+          fi
+          ./gradlew signPlugin
+
+      # Attach the built plugin (image-tools-<version>.zip, plus the -signed one when available) to the draft release
+      - name: Attach plugin to the draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(./gradlew properties --property version --quiet --console=plain | tail -n 1 | cut -f2- -d ' ')
+          gh release upload "$VERSION" build/distributions/*.zip --clobber
