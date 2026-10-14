@@ -59,21 +59,6 @@ All formats sit behind the `ImageCodec` interface (`codec/`), so a codec can be 
 
 Requires JDK 21.
 
-### The bundled AVIF tools
-
-`avifenc` / `avifdec` are not stored in git. The **Natives** workflow (`.github/workflows/natives.yml`, run manually or by pushing a
-`natives-libavif-v*` tag) builds them for the six platforms and attaches them to a GitHub release. Put the printed SHA-256 sums into
-`natives/checksums.txt`: the `downloadAvifNatives` task fetches the archives, verifies them against those sums and the plugin build packages them.
-While that file lists no archives, the plugin builds without AVIF and the entry is simply absent from the menu.
-
-To test against locally built binaries, point `IMAGETOOLS_NATIVES_DIR` at a directory laid out as `<dir>/<platform>/avifenc[.exe]`.
-
-### Releasing
-
-The template's GitHub Actions are kept: *Build* runs on every push/PR and prepares a draft release, publishing the release runs *Release*,
-which signs the plugin and uploads it to JetBrains Marketplace. Secrets needed: `PUBLISH_TOKEN`, `CERTIFICATE_CHAIN`, `PRIVATE_KEY`, `PRIVATE_KEY_PASSWORD`.
-Create the plugin on the Marketplace manually before the first automated publish.
-
 ## License
 
 Apache-2.0, see [LICENSE](LICENSE). Bundled components are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
