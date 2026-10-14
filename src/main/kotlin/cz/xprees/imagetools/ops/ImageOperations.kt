@@ -2,6 +2,7 @@ package cz.xprees.imagetools.ops
 
 import cz.xprees.imagetools.codec.CodecRegistry
 import cz.xprees.imagetools.codec.Pixels
+import cz.xprees.imagetools.codec.SvgRenderer
 import cz.xprees.imagetools.codec.upright
 import cz.xprees.imagetools.model.EncodeOptions
 import cz.xprees.imagetools.model.ImageFormat
@@ -30,19 +31,32 @@ object ImageOperations {
      * Decodes [source], re-encodes as [targetFormat] into [target]. The write goes to a temp file first,
      * so an interrupted or failed run never leaves a truncated image behind.
      */
-    fun convert(source: Path, sourceFormat: ImageFormat, target: Path, targetFormat: ImageFormat, options: EncodeOptions) {
-        transcode(source, sourceFormat, target, targetFormat, options) { it }
+    fun convert(
+        source: Path,
+        sourceFormat: ImageFormat,
+        target: Path,
+        targetFormat: ImageFormat,
+        options: EncodeOptions,
+        vectorSize: ResizeSpec = ResizeSpec.Percent(100),
+    ) {
+        transcode(source, sourceFormat, target, targetFormat, options, vectorSize) { it }
     }
 
     fun resize(source: Path, sourceFormat: ImageFormat, target: Path, targetFormat: ImageFormat, options: EncodeOptions, spec: ResizeSpec) {
-        transcode(source, sourceFormat, target, targetFormat, options) { decoded ->
-            val (w, h) = spec.resolve(decoded.image.width, decoded.image.height)
-            decoded.withImage(Pixels.scale(decoded.image, w, h))
+        // vectors are rendered straight at the requested size instead of being scaled afterwards
+        transcode(source, sourceFormat, target, targetFormat, options, spec) { decoded ->
+            if (sourceFormat.isVector) {
+                decoded
+            } else {
+                val (w, h) = spec.resolve(decoded.image.width, decoded.image.height)
+                decoded.withImage(Pixels.scale(decoded.image, w, h))
+            }
         }
     }
 
     /** Pixel size after orientation, for pre-filling the resize dialog. */
     fun dimensions(source: Path, format: ImageFormat): Pair<Int, Int> {
+        if (format.isVector) return SvgRenderer.intrinsicSize(source)
         val image = CodecRegistry.reader(format).read(source, format).upright().image
         return image.width to image.height
     }
@@ -53,9 +67,15 @@ object ImageOperations {
         target: Path,
         targetFormat: ImageFormat,
         options: EncodeOptions,
+        vectorSize: ResizeSpec,
         transform: (cz.xprees.imagetools.codec.DecodedImage) -> cz.xprees.imagetools.codec.DecodedImage,
     ) {
-        val decoded = CodecRegistry.reader(sourceFormat).read(source, sourceFormat)
+        val decoded = if (sourceFormat.isVector) {
+            val (w, h) = vectorSize.resolve(SvgRenderer.intrinsicSize(source))
+            cz.xprees.imagetools.codec.DecodedImage(SvgRenderer.render(source, w, h))
+        } else {
+            CodecRegistry.reader(sourceFormat).read(source, sourceFormat)
+        }
         val prepared = transform(decoded.upright())
         val temp = Files.createTempFile(target.toAbsolutePath().parent, ".imagetools-", ".tmp")
         try {

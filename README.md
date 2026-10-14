@@ -13,7 +13,7 @@ Works in every JetBrains IDE based on the IntelliJ Platform 2026.1 or newer (Int
 
 ## Usage
 
-Select one or more image files (`.png`, `.jpg`/`.jpeg`, `.webp`, `.avif`, `.bmp`, `.gif`) in the Project view, or right-click an
+Select one or more image files (`.png`, `.jpg`/`.jpeg`, `.webp`, `.avif`, `.svg`, `.bmp`, `.gif`) in the Project view, or right-click an
 image's editor tab:
 
 | Menu entry | Result |
@@ -29,12 +29,19 @@ image's editor tab:
 - EXIF and ICC data are carried over, and the EXIF orientation is applied to the pixels (the tag is reset to 1). Images in a wide-gamut colour space
   are converted to sRGB when decoded.
 - Transparency is flattened onto a background colour when converting to JPG (default white, configurable in *Settings › Tools › Image Tools*).
+- **SVG** can be converted to PNG, JPG, WebP or AVIF. Because a vector has no pixel size, each target offers *original size*, *×2*, *×3* and
+  *custom size…* instead of the quality presets (those use the default quality from the settings; *custom size…* also asks for quality and lossless).
+  The custom dialog takes a scale in percent or, for a single SVG, an exact resolution with the aspect ratio locked by default. It shows the original ratio
+  and warns when you unlock it and the ratio no longer matches: the vector is then fitted inside the canvas and centred, with transparent margins
+  (or the JPG background colour), never distorted. Vectors are rendered directly at the target size, so upscaling stays sharp. Scaled output is named
+  `logo@2x.png` or `logo-512x512.png`. **Resize Image…** on an SVG writes a PNG.
 - Animated GIF / WebP / AVIF: only the first frame can be converted for now; you're asked per batch whether to do that or skip the file.
 
 ## How it works
 
 | Format | Implementation |
 |---|---|
+| SVG (read-only) | [JSVG](https://github.com/weisJ/jsvg) (pure Java). External resources are limited to files next to the SVG; nothing is fetched from the network |
 | PNG, JPG (BMP, GIF read-only) | JDK ImageIO; [TwelveMonkeys](https://github.com/haraldk/TwelveMonkeys) for decoding JPEG |
 | WebP | [webp-imageio](https://github.com/usefulness/webp-imageio) (libwebp via JNI). Not available on Windows ARM64 |
 | AVIF | libavif's `avifenc` / `avifdec` executables bundled per platform (`bin/<os>-<arch>/`): win-x64, win-arm64, mac-arm64, mac-x64, linux-x64, linux-arm64 |

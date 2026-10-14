@@ -6,8 +6,9 @@ object CodecRegistry {
     private val imageIo = ImageIoCodec()
     private val webp = WebpCodec()
     private val avif = AvifCliCodec(imageIo)
+    private val svg = SvgCodec()
 
-    private val all: List<ImageCodec> get() = listOf(imageIo, webp, avif)
+    private val all: List<ImageCodec> get() = listOf(imageIo, webp, avif, svg)
 
     fun reader(format: ImageFormat): ImageCodec =
         all.firstOrNull { it.canRead(format) } ?: throw UnsupportedFormatException("${format.label} cannot be read on this platform")
