@@ -142,13 +142,20 @@ val downloadAvifNatives = tasks.register<DownloadAvifNatives>("downloadAvifNativ
 
 val platformVersion = providers.gradleProperty("platformVersion")
 
-// "2026.2.3" -> "262": two-digit year followed by the release number, which is how IDE build numbers start
-val ideBuildLine = platformVersion.map { version ->
-    val (year, release) = version.split('.').map(String::toInt)
-    "${year - 2000}$release"
-}
-val pluginSinceBuild = providers.gradleProperty("pluginSinceBuild").orElse(ideBuildLine)
-val pluginUntilBuild = providers.gradleProperty("pluginUntilBuild").orElse(ideBuildLine.map { "$it.*" })
+// "2026.2.3" -> "262": two-digit year followed by the release number, which is how IDE build numbers start.
+// (Written out inline: a shared helper function would make these providers reference the build script, which the configuration cache refuses.)
+val pluginSinceBuild = providers.gradleProperty("pluginSinceBuild").orElse(
+    platformVersion.map { version ->
+        val (year, release) = version.split('.').map(String::toInt)
+        "${year - 2000}$release"
+    },
+)
+// No upper bound by default: the plugin is declared compatible with every future IDE and narrowed (-PpluginUntilBuild=263.*)
+// only if a newer release turns out to break it.
+val pluginUntilBuild = providers.gradleProperty("pluginUntilBuild")
+
+/** Comma separated version list from gradle.properties. */
+fun versionList(property: String) = providers.gradleProperty(property).map { list -> list.split(',').map(String::trim).filter(String::isNotEmpty) }
 
 dependencies {
     implementation("com.github.usefulness:webp-imageio:0.11.0")
@@ -163,17 +170,10 @@ dependencies {
     }
 }
 
-java {
-    // no Java sources: this only keeps Gradle's Java/Kotlin target validation consistent with the Kotlin target below
-    targetCompatibility = JavaVersion.VERSION_25
-}
-
 kotlin {
+    // Java 21 bytecode runs on every supported IDE (2026.1 ships a Java 21 runtime, 2026.2+ run Java 25). Code compiled against a
+    // 2026.2+ IDE must therefore avoid the platform's inline Kotlin helpers, which are built for Java 25.
     jvmToolchain(21)
-    compilerOptions {
-        // IDE 2026.2 runs on Java 25 and its jars are built for it; Kotlin can't inline their helpers into older bytecode
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25
-    }
 }
 
 intellijPlatform {
@@ -227,10 +227,13 @@ intellijPlatform {
 
     pluginVerification {
         ides {
-            create(IntelliJPlatformType.IntellijIdea, platformVersion.get())
-            create(IntelliJPlatformType.WebStorm, platformVersion.get())
-            // Rider has no installer-based resolution (intellij-platform-gradle-plugin#1852)
-            create(IntelliJPlatformType.Rider, platformVersion.get()) { useInstaller = false }
+            // every supported IDE generation, so a break on any of them shows up in CI
+            versionList("verifyIdeaVersions").get().forEach { create(IntelliJPlatformType.IntellijIdea, it) }
+            versionList("verifyWebStormVersions").get().forEach { create(IntelliJPlatformType.WebStorm, it) }
+            versionList("verifyRiderVersions").get().forEach {
+                // Rider has no installer-based resolution (intellij-platform-gradle-plugin#1852)
+                create(IntelliJPlatformType.Rider, it) { useInstaller = false }
+            }
         }
     }
 }
