@@ -11,7 +11,7 @@ import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBRadioButton
 import com.intellij.ui.dsl.builder.Row
-import com.intellij.ui.dsl.builder.bind
+import com.intellij.ui.dsl.builder.MutableProperty
 import com.intellij.ui.dsl.builder.bindIntValue
 import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.panel
@@ -139,7 +139,16 @@ class ResizeDialog(
             }.enabledIf(radioPredicate(pixelsRadio!!))
             row { percentButton = radioButton(message("resize.mode.percent"), Mode.PERCENT).component }
             indent { scaleRow() }.enabledIf(radioPredicate(percentButton))
-        }.bind(::mode)
+        }.bind(
+            // the non-inline overload: the platform's inline `bind(::mode)` helper is built for Java 25 and can't be used here
+            object : MutableProperty<Mode> {
+                override fun get() = mode
+                override fun set(value: Mode) {
+                    mode = value
+                }
+            },
+            Mode::class.java,
+        )
         pixelsRadio!!.addChangeListener { refreshRatioWarning() }
         qualityRows()
     }

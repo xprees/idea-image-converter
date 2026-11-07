@@ -6,7 +6,7 @@
 
 ### Changed
 
-- Compatibility range is now derived from the supported IDE version (`platformVersion`): the plugin targets IDE builds 262 to 262.* (2026.2); 2026.1 is no longer supported
+- Compatible with all 2026 IDE versions (2026.1, 2026.2, 2026.3) and every newer release: the plugin declares `since-build` 261 (derived from `platformVersion`) and no `until-build`. It is built for Java 21 and verified against IDEA, WebStorm and Rider of each generation
 
 ### Added
 
